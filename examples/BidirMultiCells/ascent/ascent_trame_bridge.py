@@ -26,7 +26,7 @@ def main():
         update_data = executeMainTask(task_id, num_tasks, comm)
     else:
         executeDependentTask(task_id, num_tasks, comm)
-    
+
     # broadcast updates to all ranks
     update_data = comm.bcast(update_data, root=0)
 
@@ -64,20 +64,10 @@ def executeMainTask(task_id, num_tasks, comm):
         # get published blueprint data
         mesh_data = ascent_data().child(0)
 
-        # TODO: repartition data -> gather on main process (0)
-        #result = repartitionMeshData(task_id, num_tasks, comm)
+        # repartition data -> gather on main process (0)
         result = gatherRbcMeshData(task_id, num_tasks, comm)
-
-        # extract red blood cell mesh polydata
-        #x_coords = mesh_data['coordsets/particle_coords/values/x']
-        #y_coords = mesh_data['coordsets/particle_coords/values/y']
-        #z_coords = mesh_data['coordsets/particle_coords/values/z']
-        #vertices = np.column_stack([x_coords, y_coords, z_coords])
-
-        #faces = np.reshape(mesh_data['topologies/particle_topo/elements/connectivity'], (-1, 3))
-
-        # send rbc data to Trame
-        #queue_data.put({'vertices': vertices, 'faces': faces})
+        
+        # pass data to trame
         queue_data.put(result)        
 
         # get steering updates from Trame
@@ -93,10 +83,7 @@ def executeDependentTask(task_id, num_tasks, comm):
     comm.Bcast((interactive, 1, MPI.BOOL), root=0)
 
     if interactive[0]:
-        # TODO: repartition data -> gather on main process (0)
-        #repartitionMeshData(task_id, num_tasks, comm)
         gatherRbcMeshData(task_id, num_tasks, comm)
-        pass
 
 
 def gatherRbcMeshData(task_id, num_tasks, comm):
@@ -115,31 +102,24 @@ def gatherRbcMeshData(task_id, num_tasks, comm):
 
     all_vertices = comm.gather(vertices, root=0)
     all_faces = comm.gather(faces, root=0)
-    
+   
     if task_id == 0:
         vertex_counts = np.array([x.shape[0] for x in all_vertices], dtype=np.uint32)
         vertex_offsets = np.cumsum(vertex_counts, dtype=np.uint32)
         for i in range(len(all_faces)):
-            # filter out all faces whose verts are out of range
-            mask = np.apply_along_axis(np.any, 1, all_faces[i] >= vertex_counts[i])
-            all_faces[i] = all_faces[i][~mask]   
-            # add offset into global array
-            if i >= 1:
-                np.add(all_faces[i], vertex_offsets[i - 1], out=all_faces[i])
+            if all_faces[i].shape[0] > 0:
+                # filter out all faces whose verts are out of range
+                mask = np.apply_along_axis(np.any, 1, all_faces[i] >= vertex_counts[i])
+                all_faces[i] = all_faces[i][~mask]   
+                # add offset into global array
+                if i >= 1:
+                    np.add(all_faces[i], vertex_offsets[i - 1], out=all_faces[i])
         
         all_vertices = np.concatenate(all_vertices)
         all_faces = np.concatenate(all_faces)
 
         result = {'vertices': all_vertices, 'faces': all_faces}
  
-        f = open('sim_data.txt', 'w', encoding='utf-8')
-        f.write(f'Vertex Counts\n{vertex_counts}\n')
-        f.write(f'Vertex Offsets\n{vertex_offsets}\n')
-        #f.write(f'Face Counts\n{face_count}\n')
-        f.write(f'Vertex Data\n{all_vertices}\n')
-        f.write(f'Face Data\n{all_faces}\n')
-        f.close()
-
     return result
 
 

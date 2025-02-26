@@ -47,13 +47,13 @@
           field: "fluid_vel_mag"
           pipeline: pl1
           min_value: 0.0
-          max_value: 0.0006
+          max_value: 0.006
           color_table:
-            name: "Cold and Hot"
+            name: "Jet"
       renders:
         r1:
-          image_width: 900
-          image_height: 540
+          image_width: 1200
+          image_height: 360
           image_name: "fluid_vel_mag_yz"
           annotations: "false"
           camera:
@@ -71,13 +71,13 @@
           field: "fluid_vel_mag"
           pipeline: pl2
           min_value: 0.0
-          max_value: 0.0006
+          max_value: 0.006
           color_table:
-            name: "Cold and Hot"
+            name: "Jet"
       renders:
         r1:
-          image_width: 900
-          image_height: 540
+          image_width: 1200
+          image_height: 360
           image_name: "fluid_vel_mag_xz"
           annotations: "false"
           camera:

@@ -442,7 +442,7 @@ void addRandomCell(conduit::Node &params, conduit::Node &output) {
 }
 
 void updateVesselStenosis(conduit::Node &params, conduit::Node &output) {
-    std::cout << params.to_yaml() << std::endl;
+    //std::cout << params.to_yaml() << std::endl;
 	if (params.has_path("stenosis_amplitude")) {
         stenosisAmp = params["stenosis_amplitude"].as_float64();
         steeringUpdate = true;
@@ -598,7 +598,7 @@ int main(int argc, char* argv[]) {
     setExternalVector(lattice,lattice.getBoundingBox(),DESCRIPTOR<T>::ExternalField::forceBeginsAt,force);
     //LAMMPS
 
-   /* plint xc, yc, radius, iterationCAS, zLength, clotLoc;
+    /* plint xc, yc, radius, iterationCAS, zLength, clotLoc;
 
     xc = nx/2; // X center 
     yc = ny/2; // Y center
@@ -607,26 +607,25 @@ int main(int argc, char* argv[]) {
     iterationCAS = 10; // iterations for collideAndStream in the loop 
     zLength = parameters.getNz(); // because domain.z0 gives local value pass this instead.
     clotLoc = zLength;  
-  */ 
+    */ 
+    stenosisAmp = 0.0;
     T A, L, Zc;
-    //A = ny/5.0; // initial clot height
-    //L = nz*1.0;
-    //Zc = nz/2.0;  
-    //createDynamicBoundaryFromDataProcessor(lattice, A,L,Zc,parameters.getOmega()); // added by NT 7/18/2022
- // define cylinderical walls	
+    A = 0.5 * stenosisAmp;  // initial clot height
+    L = 0.5 * nz;           // initial clot length
+    Zc = 0.5 * nz;          // initial clot center
+    createDynamicBoundaryFromDataProcessor(lattice, A,L,Zc,parameters.getOmega()); // added by NT 7/18/2022
+    // define cylinderical walls	
     Array<plint,2> coor(nx/2,ny/2);
     plint r = nx/2;
-    //defineDynamics(lattice,lattice.getBoundingBox(), new WallDomain3D<plint>(coor,r), new BounceBack<T,DESCRIPTOR>);	
+    defineDynamics(lattice,lattice.getBoundingBox(), new WallDomain3D<plint>(coor,r), new BounceBack<T,DESCRIPTOR>);	
    
-    //for (plint iT=0; iT<100;iT++){ 
+    // bring to pseudo steady-state
+    //for (plint iT=0; iT<2000; iT++){ 
     //    lattice.collideAndStream();
     //}
 
     long time = 0; 
  
-    // for (plint iT=0;iT<4e3;iT++){
-    //     lattice.collideAndStream();
-    // }
     T timeduration = T();
     global::timer("mainloop").start();
     plint nlocal;
@@ -653,7 +652,7 @@ int main(int argc, char* argv[]) {
     std::stringstream fixDepositString;
     int fixID = 3;
   
-
+    T oldStenosisAmp = stenosisAmp;
     for (plint iT=0; iT<maxT; ++iT) {
         
         // if (iT%iSave ==0 && iT >0){
@@ -674,30 +673,24 @@ int main(int argc, char* argv[]) {
         v = wrapper->lmp->atom->v;
         anglelist = wrapper->lmp->neighbor->anglelist;
         
-
-        //*************************************
-        vel = *computeVelocity(lattice,lattice.getBoundingBox());
-        vort = *computeVorticity(vel);
-        velNorm = *computeVelocityNorm(lattice,lattice.getBoundingBox());
-
-	    TensorField3D<T,3> velocityArray = vel.getComponent(myrank);
-   	    TensorField3D<T,3> vorticityArray = vort.getComponent(myrank);
-      	ScalarField3D<T> velocityNormArray = velNorm.getComponent(myrank);
-      
-        //Box3D domain = Box3D(localdomain[myrank][0]-envelopeWidth,localdomain[myrank][1]+envelopeWidth,localdomain[myrank][2]-envelopeWidth,localdomain[myrank][3]+envelopeWidth,localdomain[myrank][4]-envelopeWidth,localdomain[myrank][5]+envelopeWidth);
-        Box3D domain = Box3D(localdomain[myrank][0],localdomain[myrank][1],localdomain[myrank][2],localdomain[myrank][3],localdomain[myrank][4],localdomain[myrank][5]);
-        //*************************************
-        
-        //cout<<"Rank: " << myrank <<" local domain Extents: x: " <<domain.x0 << " " << domain.x1 << " y: " << domain.y0 <<" "<<domain.y1<< " z "<<domain.z0<<" "<<domain.z1<<endl;
-        //cout<<"Rank: " << myrank <<" Vorticity Extents: " <<vorticityArray.getNx() << " " << vorticityArray.getNy() << " " << vorticityArray.getNz()<<endl;
-        //cout<<"Rank: " << myrank <<" Velocity Extents: " <<velocityArray.getNx() << " " << velocityArray.getNy() << " " << velocityArray.getNz()<<endl;
-        //cout<<"Rank: " << myrank <<" Velocity Norm Extents: " <<velocityNormArray.getNx() << " " << velocityNormArray.getNy() << " " << velocityNormArray.getNz()<<endl;
+        if (iT%iSave == 0 && iT > 0) {
+            if (myrank == 0) {
+                cout << "Running time step: " << iT << endl;
+            }
 #ifdef ENABLE_ASCENT
-        if (iT%(iSave) ==0 && iT >0){
+            vel = *computeVelocity(lattice,lattice.getBoundingBox());
+            vort = *computeVorticity(vel);
+            velNorm = *computeVelocityNorm(lattice,lattice.getBoundingBox());
+
+            TensorField3D<T,3> velocityArray = vel.getComponent(myrank);
+            TensorField3D<T,3> vorticityArray = vort.getComponent(myrank);
+            ScalarField3D<T> velocityNormArray = velNorm.getComponent(myrank);
+
+            Box3D dom = Box3D(localdomain[myrank][0],localdomain[myrank][1],localdomain[myrank][2],localdomain[myrank][3],localdomain[myrank][4],localdomain[myrank][5]);
 
             AscentBridge::getInstance().Publish(x, v, ntimestep, nghost, nlocal, anglelist, nanglelist,
                                 velocityArray, vorticityArray, velocityNormArray, 
-                                nx, ny, nz, domain, envelopeWidth);
+                                nx, ny, nz, dom, envelopeWidth);
         /*    if(iT == 5) {
                 std::cout << "Inserting a new RBC" << std::endl;
                 int pt[] = {10, 10, 10};
@@ -708,8 +701,8 @@ int main(int argc, char* argv[]) {
                 //wrapper->execCommand("fix 3 cells deposit 1 0 1 12345 mol singleRBC region RBC_zone id max gaussian 10 10 5 10 near 2 ");// this is working, 7/6/2023 TISHCHENKO
                 fixDepositString.str("");
             }*/
+#endif
         }
-#endif        
 
         // Clear and spread fluid force
         setExternalVector(lattice,lattice.getBoundingBox(),DESCRIPTOR<T>::ExternalField::forceBeginsAt,force);
@@ -717,20 +710,22 @@ int main(int argc, char* argv[]) {
         spreadForce3D(lattice,*wrapper);
         ///--------------redefine a new domain--------------// NT 12/20
         if(steeringUpdate) {
-            pcout << "change clot size" << std::endl;
+            double t = static_cast<double>(iT % iSave) / static_cast<double>(iSave - 1);
+            double currentAmp = (1.0 - t) * oldStenosisAmp + t * stenosisAmp;
+            
+            //pcout << "change clot size" << std::endl;
             // The stenosis geometry y = A*cos(2*pi*(z-zc)/L): 
-            A = stenosisAmp; // max allowed value: ny*3
-    	    L = nz*1.0; // clot size in z direction 
-            Zc = nz/2.0;  // center of the clot
+            A = 0.5 * currentAmp;
+    	    L = 0.5 * nz; 
+            Zc = 0.5 * nz;
             createDynamicBoundaryFromDataProcessor(lattice, A, L, Zc, parameters.getOmega()); // added by NT 7/18/2022
             // define cylinderical walls
             defineDynamics(lattice,lattice.getBoundingBox(), new WallDomain3D<plint>(coor,r), new BounceBack<T,DESCRIPTOR>);	
 
-            for (plint iiT=0; iiT<10; iiT++){ //internal iteration is needed to restore the flow 
-                lattice.collideAndStream();
+            if (iT % iSave == iSave - 1) {
+                steeringUpdate = false;
+                oldStenosisAmp = stenosisAmp;
             }
-
-            steeringUpdate = false;
         }
         ////// Lattice Boltzmann iteration step.
 

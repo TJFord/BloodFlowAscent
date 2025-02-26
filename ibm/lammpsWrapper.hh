@@ -28,19 +28,19 @@ LammpsWrapper::LammpsWrapper(char **argv, MPI_Comm communicator)
   : lmp(0)
 {
   // todo: get LAMMPS to recognize command line options
-  int argc_lmp = 1;
-  char **argv_lmp = 0;
-  argv_lmp = new char*[1];
-  argv_lmp[0] = argv[0];
-  //--------works for none output-----------//
-  //int argc_lmp = 5;
+  //int argc_lmp = 1;
   //char **argv_lmp = 0;
-  //argv_lmp = new char*[5];
+  //argv_lmp = new char*[1];
   //argv_lmp[0] = argv[0];
-  //argv_lmp[1]="-sc";
-  //argv_lmp[2]="none";
-  //argv_lmp[3]="-log";
-  //argv_lmp[4]="none";
+  //--------works for none output-----------//
+  int argc_lmp = 5;
+  char **argv_lmp = 0;
+  argv_lmp = new char*[5];
+  argv_lmp[0] = argv[0];
+  argv_lmp[1]="-screen";
+  argv_lmp[2]="none";
+  argv_lmp[3]="-log";
+  argv_lmp[4]="none";
 
   lmp = new LAMMPS_NS::LAMMPS(argc_lmp,argv_lmp,communicator);
 

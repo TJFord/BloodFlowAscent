@@ -20,8 +20,8 @@ from vtkmodules.vtkInteractionStyle import vtkInteractorStyleSwitch  # noqa
 from vtkmodules.util import numpy_support
 
 from trame.app import get_server, asynchronous
-#from trame.widgets import vuetify, vtk as vtk_widgets
-from trame.widgets import vuetify, vtklocal as vtk_widgets
+from trame.widgets import vuetify, vtk as vtk_widgets
+#from trame.widgets import vuetify, vtklocal as vtk_widgets
 from trame.ui.vuetify import SinglePageLayout
 
 DIMS = {'x': 360.0, 'y': 360.0, 'z': 1200.0}
@@ -129,15 +129,15 @@ def runTrameServer(state_queue, update_queue):
     vtk_data['fluid_yz_actor'].SetMapper(vtk_data['fluid_yz_mapper'])
     vtk_data['renderer'].AddActor(vtk_data['fluid_yz_actor'])
 
-    vtk_data['fluid_xz_plane'] = vtkPlaneSource()
-    vtk_data['fluid_xz_plane'].SetOrigin(0.0, 0.5 * DIMS['y'], 0.0)
-    vtk_data['fluid_xz_plane'].SetPoint1(0.0, 0.5 * DIMS['y'], DIMS['z'])
-    vtk_data['fluid_xz_plane'].SetPoint2(DIMS['x'], 0.5 * DIMS['y'], 0.0)
-    vtk_data['fluid_xz_mapper'] = vtkPolyDataMapper()
-    vtk_data['fluid_xz_actor'] = vtkActor()
-    vtk_data['fluid_xz_mapper'].SetInputConnection(vtk_data['fluid_xz_plane'].GetOutputPort())
-    vtk_data['fluid_xz_actor'].SetMapper(vtk_data['fluid_xz_mapper'])
-    vtk_data['renderer'].AddActor(vtk_data['fluid_xz_actor'])
+    #vtk_data['fluid_xz_plane'] = vtkPlaneSource()
+    #vtk_data['fluid_xz_plane'].SetOrigin(0.0, 0.5 * DIMS['y'], 0.0)
+    #vtk_data['fluid_xz_plane'].SetPoint1(0.0, 0.5 * DIMS['y'], DIMS['z'])
+    #vtk_data['fluid_xz_plane'].SetPoint2(DIMS['x'], 0.5 * DIMS['y'], 0.0)
+    #vtk_data['fluid_xz_mapper'] = vtkPolyDataMapper()
+    #vtk_data['fluid_xz_actor'] = vtkActor()
+    #vtk_data['fluid_xz_mapper'].SetInputConnection(vtk_data['fluid_xz_plane'].GetOutputPort())
+    #vtk_data['fluid_xz_actor'].SetMapper(vtk_data['fluid_xz_mapper'])
+    #vtk_data['renderer'].AddActor(vtk_data['fluid_xz_actor'])
 
     vertices = [[7.0, 7.0, 18.5], [25.0, 7.0, 36.1], [16.0, 25.0, 27.3]] # array of 3D points
     faces = [[0, 1, 2]] # array of triangles - each triangle has 3 vertex indices
@@ -150,6 +150,11 @@ def runTrameServer(state_queue, update_queue):
     vtk_data['renderer'].ResetCamera()
 
     vtk_data['trame_view'] = None
+
+    
+    max_stenosis_inc = DIMS['y'] // 50
+    max_stenosis_dec = DIMS['y'] // 20
+    current_stenosis = 0
 
     # start loop to check for state updates
     @ctrl.add('on_server_ready')
@@ -166,21 +171,24 @@ def runTrameServer(state_queue, update_queue):
 
     # callback for stenosis amplitude slider
     def uiStateUpdateStenosisAmplitude(stenosis_amplitude, **kwargs):
+        state.stenosis_amplitude = max(min(current_stenosis + max_stenosis_inc, stenosis_amplitude), current_stenosis - max_stenosis_dec)
         # TODO: update vtk tube radius at fixed location
-        position = num_vessel_points // 2
-        vtk_data['vessel_radius'].SetTuple1(position, 0.5 * DIMS['x'] - stenosis_amplitude)
-        vtk_data['vessel_tube'].Modified()
-        vtk_data['trame_view'].update()
+        #position = num_vessel_points // 2
+        #vtk_data['vessel_radius'].SetTuple1(position, 0.5 * DIMS['x'] - stenosis_amplitude)
+        #vtk_data['vessel_tube'].Modified()
+        #vtk_data['trame_view'].update()
 
 
     # callback for slice opacity slider
     def uiStateUpdateSliceOpacity(slice_opacity, **kwargs):
         vtk_data['fluid_yz_actor'].GetProperty().SetOpacity(slice_opacity)
-        vtk_data['fluid_xz_actor'].GetProperty().SetOpacity(slice_opacity)
+        #vtk_data['fluid_xz_actor'].GetProperty().SetOpacity(slice_opacity)
         vtk_data['trame_view'].update()
 
     # callback for clicking submit button
     def submitSteeringOptions():
+        nonlocal current_stenosis
+        current_stenosis = state.stenosis_amplitude
         steering_data = {'stenosis_amplitude': float(state.stenosis_amplitude)}
         update_queue.put(steering_data)
 
@@ -204,9 +212,9 @@ def runTrameServer(state_queue, update_queue):
             vuetify.VSpacer()
             vuetify.VSlider(
                 label='Stenosis Amplitude',
-                v_model=('stenosis_amplitude', 0),
+                v_model=('stenosis_amplitude', current_stenosis),
                 min=0,
-                max=(DIMS['y'] // 3) - 1,
+                max=(DIMS['y'] // 3),
                 step=1,
                 hide_details=True,
                 dense=True
@@ -236,8 +244,8 @@ def runTrameServer(state_queue, update_queue):
             )
         with layout.content:
             with vuetify.VContainer(fluid=True, classes='pa-0 fill-height'):
-                #vtk_data['trame_view'] = vtk_widgets.VtkLocalView(vtk_data['renderWindow'], ref='view')
-                vtk_data['trame_view'] = vtk_widgets.LocalView(vtk_data['renderWindow'], ref='view')
+                vtk_data['trame_view'] = vtk_widgets.VtkLocalView(vtk_data['renderWindow'], ref='view')
+                #vtk_data['trame_view'] = vtk_widgets.LocalView(vtk_data['renderWindow'], ref='view')
                 vtk_data['trame_view'].reset_camera()
 
     # start Trame server
@@ -257,7 +265,7 @@ async def checkForStateUpdates(state, state_queue, update_queue, vtk_data):
 
             vtk_data['renderer'].RemoveActor(vtk_data['actor'])
             vtk_data['renderer'].RemoveActor(vtk_data['fluid_yz_actor'])
-            vtk_data['renderer'].RemoveActor(vtk_data['fluid_xz_actor'])
+            #vtk_data['renderer'].RemoveActor(vtk_data['fluid_xz_actor'])
 
             vtk_data['polyData'] = createTriangleVtkPolyData(state_data['vertices'], state_data['faces'])
             #vtk_data['polyDataClean'] = vtkCleanPolyData()
@@ -291,22 +299,24 @@ async def checkForStateUpdates(state, state_queue, update_queue, vtk_data):
             vtk_data['fluid_yz_actor'].GetProperty().SetOpacity(state.slice_opacity)
             vtk_data['renderer'].AddActor(vtk_data['fluid_yz_actor'])
 
-            vtk_data['image_reader_xz'] = vtkPNGReader()
-            vtk_data['image_reader_xz'].SetFileName('../fluid_vel_mag_xz.png')
-            vtk_data['image_reader_xz'].Update()
+            #vtk_data['image_reader_xz'] = vtkPNGReader()
+            #vtk_data['image_reader_xz'].SetFileName('../fluid_vel_mag_xz.png')
+            #vtk_data['image_reader_xz'].Update()
 
-            vtk_data['fluid_xz_tex'] = vtkTexture()
-            vtk_data['fluid_xz_tex'].SetInputConnection(vtk_data['image_reader_xz'].GetOutputPort())
-            vtk_data['fluid_xz_tex'].InterpolateOn()
+            #vtk_data['fluid_xz_tex'] = vtkTexture()
+            #vtk_data['fluid_xz_tex'].SetInputConnection(vtk_data['image_reader_xz'].GetOutputPort())
+            #vtk_data['fluid_xz_tex'].InterpolateOn()
 
             #fluid_xz_tex = createVtkTextureFromImage('../fluid_vel_mag_xz.png')
-            vtk_data['fluid_xz_actor'] = vtkActor()
-            vtk_data['fluid_xz_actor'].SetMapper(vtk_data['fluid_xz_mapper'])
-            vtk_data['fluid_xz_actor'].SetTexture(vtk_data['fluid_xz_tex'])
-            vtk_data['fluid_xz_actor'].GetProperty().SetOpacity(state.slice_opacity)
-            vtk_data['renderer'].AddActor(vtk_data['fluid_xz_actor'])
+            #vtk_data['fluid_xz_actor'] = vtkActor()
+            #vtk_data['fluid_xz_actor'].SetMapper(vtk_data['fluid_xz_mapper'])
+            #vtk_data['fluid_xz_actor'].SetTexture(vtk_data['fluid_xz_tex'])
+            #vtk_data['fluid_xz_actor'].GetProperty().SetOpacity(state.slice_opacity)
+            #vtk_data['renderer'].AddActor(vtk_data['fluid_xz_actor'])
 
             vtk_data['trame_view'].update()
+
+            print('VTK data updated!')
 
             if not state.enable_steering:
                 update_queue.put({})

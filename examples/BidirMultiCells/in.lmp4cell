@@ -77,7 +77,7 @@ fix 2 cells fcm 1
 #thermo		100
 #run             1000000
 # output thermodynamic infor every 100 timesteps
-dump            1 cells xyz 1 dump.rbc.xyz
+#dump            1 cells xyz 1 dump.rbc.xyz
 #dump           2 all custom 500 dump.rbc.force id fx fy fz
 #dump           3 all custom 500 dump.rbc.vel id vx vy vz
 # dump_modify 1 sort id # modified by Nazar on 5.7.2023
