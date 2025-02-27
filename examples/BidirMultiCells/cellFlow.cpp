@@ -211,15 +211,15 @@ void squarePoiseuilleSetup( MultiBlockLattice3D<T,DESCRIPTOR>& lattice,
 {
     const plint nx = parameters.getNx();
     const plint ny = parameters.getNy();
-    const plint nz = parameters.getNz();
-    Box3D top    = Box3D(0,    nx-1, ny-1, ny-1, 0, nz-1);
-    Box3D bottom = Box3D(0,    nx-1, 0,    0,    0, nz-1);
+    //const plint nz = parameters.getNz();
+    //Box3D top    = Box3D(0,    nx-1, ny-1, ny-1, 0, nz-1);
+    //Box3D bottom = Box3D(0,    nx-1, 0,    0,    0, nz-1);
     
     //Box3D inlet  = Box3D(0,    nx-1, 1,    ny-2, 0,    0);
     //Box3D outlet = Box3D(0,    nx-1, 1,    ny-2, nz-1, nz-1);
     
-    Box3D left   = Box3D(0,    0,    1,    ny-2, 1, nz-2);
-    Box3D right  = Box3D(nx-1, nx-1, 1,    ny-2, 1, nz-2);
+    //Box3D left   = Box3D(0,    0,    1,    ny-2, 1, nz-2);
+    //Box3D right  = Box3D(nx-1, nx-1, 1,    ny-2, 1, nz-2);
     // shear flow top bottom surface
     /*
     boundaryCondition.setVelocityConditionOnBlockBoundaries ( lattice, inlet, boundary::outflow );
@@ -255,7 +255,7 @@ void squarePoiseuilleSetup( MultiBlockLattice3D<T,DESCRIPTOR>& lattice,
  */
  	Array<plint,2> coor(nx/2,ny/2);
 	plint r = nx/2;
-     defineDynamics(lattice,lattice.getBoundingBox(),new WallDomain3D<plint>(coor,r), new BounceBack<T,DESCRIPTOR>);	
+    defineDynamics(lattice,lattice.getBoundingBox(),new WallDomain3D<plint>(coor,r), new BounceBack<T,DESCRIPTOR>);	
 
     //initializeAtEquilibrium(lattice, lattice.getBoundingBox(), SquarePoiseuilleDensityAndVelocity<T>(parameters, NMAX));
     initializeAtEquilibrium(lattice, lattice.getBoundingBox(),(T)1.0, Array<T,3>(0.0,0.0,0.0));
@@ -624,18 +624,18 @@ int main(int argc, char* argv[]) {
     //    lattice.collideAndStream();
     //}
 
-    long time = 0; 
+    //long time = 0; 
  
     T timeduration = T();
     global::timer("mainloop").start();
-    plint nlocal;
-    long ntimestep;
-    int nanglelist;
-    int nghost;
-    double **x;
-    double **v;
+    plint nlocal = 0;
+    long ntimestep = 0;
+    int nanglelist = 0;
+    int nghost = 0;
+    double **x = nullptr;
+    double **v = nullptr;
    
-    int **anglelist;
+    int **anglelist = nullptr;
     // Array<double,3> center(0.,0.,0.);
     //  std::vector<std::double> center;
 
@@ -643,18 +643,86 @@ int main(int argc, char* argv[]) {
     MultiTensorField3D<double, 3> vort(lattice);
     MultiScalarField3D<double> velNorm(lattice);
 
-    //TensorField3D<T,3> velocityArray = vel.getComponent(myrank);
-    //TensorField3D<T,3> vorticityArray = vort.getComponent(myrank);
-    //ScalarField3D<T> velocityNormArray = velNorm.getComponent(myrank);
-    int test2 = 1;
-    int t_count = 0;
-    float t = 0.;
+    //int test2 = 1;
+    //int t_count = 0;
+    //float t = 0.;
     std::stringstream fixDepositString;
-    int fixID = 3;
+    //int fixID = 3;
   
     T oldStenosisAmp = stenosisAmp;
     for (plint iT=0; iT<maxT; ++iT) {
-        
+        // output data (if it is a "save" timestep)
+        if (iT%iSave == 0 && iT > 0) {
+            if (myrank == 0) cout << "Running time step: " << iT << endl;
+
+#ifdef ENABLE_ASCENT
+            nlocal = wrapper->lmp->atom->nlocal;
+            ntimestep = wrapper->lmp->update->ntimestep;
+            nanglelist = wrapper->lmp->neighbor->nanglelist;
+            nghost = wrapper->lmp->atom->nghost;
+            x = wrapper->lmp->atom->x;
+            v = wrapper->lmp->atom->v;
+            anglelist = wrapper->lmp->neighbor->anglelist;
+
+            vel = *computeVelocity(lattice,lattice.getBoundingBox());
+            vort = *computeVorticity(vel);
+            velNorm = *computeVelocityNorm(lattice,lattice.getBoundingBox());
+
+            TensorField3D<T,3> velocityArray = vel.getComponent(myrank);
+            TensorField3D<T,3> vorticityArray = vort.getComponent(myrank);
+            ScalarField3D<T> velocityNormArray = velNorm.getComponent(myrank);
+
+            Box3D dom = Box3D(localdomain[myrank][0], localdomain[myrank][1],
+                              localdomain[myrank][2], localdomain[myrank][3],
+                              localdomain[myrank][4], localdomain[myrank][5]);
+
+            AscentBridge::getInstance().Publish(x, v, ntimestep, nghost, nlocal, anglelist, nanglelist,
+                                                velocityArray, vorticityArray, velocityNormArray,
+                                                nx, ny, nz, dom, envelopeWidth);
+#endif
+        }
+
+        // update fluid and particles from user steering
+        if(steeringUpdate) {
+            A = 0.5 * stenosisAmp;
+            L = 0.5 * nz;
+            Zc = 0.5 * nz;
+            createDynamicBoundaryFromDataProcessor(lattice, A, L, Zc, parameters.getOmega());
+            defineDynamics(lattice,lattice.getBoundingBox(), new WallDomain3D<plint>(coor,r), new BounceBack<T,DESCRIPTOR>);
+
+            double L_start = 0.5 * (nz - L);
+            double L_end = L_start + L;
+            for (int64_t p=0; p<nlocal; p++) {
+                if (x[p][2] > L_start && x[p][2] < L_end) {
+                    double t = 2.0 * M_PI * ((x[p][2] - L_start) / L);
+                    double hOld = oldStenosisAmp * ((-0.5 * cos(t)) + 0.5);
+                    double h = stenosisAmp * ((-0.5 * cos(t)) + 0.5 );
+                    double vesselHeightOld = ny - hOld;
+                    double vesselHeight = ny - h;
+                    x[p][1] = ny - (((ny - x[p][1]) / vesselHeightOld) * vesselHeight);
+                }
+            }
+
+            oldStenosisAmp = stenosisAmp;
+            steeringUpdate = false;
+        }
+
+        // advance LAMMPS sim 1 time step
+        wrapper->execCommand(const_cast<char*>("run 1 pre no post no"));
+
+        // clear and spread fluid force
+        setExternalVector(lattice,lattice.getBoundingBox(),DESCRIPTOR<T>::ExternalField::forceBeginsAt,force);
+        // classical ibm coupling
+        spreadForce3D(lattice,*wrapper);
+
+        // advance fluid sim 1 time step
+        lattice.collideAndStream();
+        // interpolate and update solid position
+        interpolateVelocity3D(lattice,*wrapper);
+
+
+
+/*
         // if (iT%iSave ==0 && iT >0){
         //     wrapper->execCommand("fix 3 cells deposit 1 0 1 12345 mol singleRBC region RBC_zone id max gaussian 15 15 10 10 near 4");
         //     // wrapper->execFile("in.deposit");
@@ -691,16 +759,6 @@ int main(int argc, char* argv[]) {
             AscentBridge::getInstance().Publish(x, v, ntimestep, nghost, nlocal, anglelist, nanglelist,
                                 velocityArray, vorticityArray, velocityNormArray, 
                                 nx, ny, nz, dom, envelopeWidth);
-        /*    if(iT == 5) {
-                std::cout << "Inserting a new RBC" << std::endl;
-                int pt[] = {10, 10, 10};
-                fixDepositString << "fix 3 cells deposit 1 0 1 12345 mol singleRBC region RBC_zone id max gaussian "<<pt[0]<<" "<<pt[1]<<" "<< pt[2] << " 1 near 2 "<<endl;
-                std::cout << "Deposit string: " << fixDepositString.str() << std::endl;
-                //fix 3 cells deposit 1 0 1 12345 mol singleRBC region RBC_zone id max gaussian 10 10 10 10 near 2 # vz 10 20 
-                wrapper->execCommand(fixDepositString);
-                //wrapper->execCommand("fix 3 cells deposit 1 0 1 12345 mol singleRBC region RBC_zone id max gaussian 10 10 5 10 near 2 ");// this is working, 7/6/2023 TISHCHENKO
-                fixDepositString.str("");
-            }*/
 #endif
         }
 
@@ -710,22 +768,62 @@ int main(int argc, char* argv[]) {
         spreadForce3D(lattice,*wrapper);
         ///--------------redefine a new domain--------------// NT 12/20
         if(steeringUpdate) {
-            double t = static_cast<double>(iT % iSave) / static_cast<double>(iSave - 1);
-            double currentAmp = (1.0 - t) * oldStenosisAmp + t * stenosisAmp;
+            //double t = static_cast<double>(iT % iSave) / static_cast<double>(iSave - 1);
+            //double currentAmp = (1.0 - t) * oldStenosisAmp + t * stenosisAmp;
             
             //pcout << "change clot size" << std::endl;
             // The stenosis geometry y = A*cos(2*pi*(z-zc)/L): 
-            A = 0.5 * currentAmp;
-    	    L = 0.5 * nz; 
-            Zc = 0.5 * nz;
-            createDynamicBoundaryFromDataProcessor(lattice, A, L, Zc, parameters.getOmega()); // added by NT 7/18/2022
+            //A = 0.5 * currentAmp;
+    	    //L = 0.5 * nz; 
+            //Zc = 0.5 * nz;
+            //createDynamicBoundaryFromDataProcessor(lattice, A, L, Zc, parameters.getOmega()); // added by NT 7/18/2022
             // define cylinderical walls
-            defineDynamics(lattice,lattice.getBoundingBox(), new WallDomain3D<plint>(coor,r), new BounceBack<T,DESCRIPTOR>);	
+            //defineDynamics(lattice,lattice.getBoundingBox(), new WallDomain3D<plint>(coor,r), new BounceBack<T,DESCRIPTOR>);	
 
-            if (iT % iSave == iSave - 1) {
-                steeringUpdate = false;
-                oldStenosisAmp = stenosisAmp;
+            // shift rbc particles based on new stenosis
+            A = 0.5 * stenosisAmp;
+            L = 0.5 * nz;
+            Zc = 0.5 * nz;
+            createDynamicBoundaryFromDataProcessor(lattice, A, L, Zc, parameters.getOmega());
+            defineDynamics(lattice,lattice.getBoundingBox(), new WallDomain3D<plint>(coor,r), new BounceBack<T,DESCRIPTOR>);
+
+            //lammps_gather(wrapper->lmp, atomPosName, 1, 3, atomPosAll);
+
+            double L_start = 0.5 * (nz - L);
+            double L_end = L_start + L;
+            bool firstp = true;
+            double x0, y0, z0;
+            for (int64_t p=0; p<nlocal; p++) {
+                //x[p][0];
+                x[p][1] += 1.0;
+                //x[p][2];
             }
+
+            //for (int64_t p=0; p<3*nAtomsTot; p+=3) {
+            //    if (atomPosAll[p+2] > L_start && atomPosAll[p+2] < L_end) {
+            //        double t = 2.0 * M_PI * ((atomPosAll[p+2] - L_start) / L);
+            //        double hOld = oldStenosisAmp * ((-0.5 * cos(t)) + 0.5);
+            //        double h = stenosisAmp * ((-0.5 * cos(t)) + 0.5 );
+            //        double vesselHeightOld = ny - hOld;
+            //        double vesselHeight = ny - h;
+            //        double yOld = atomPosAll[p+1];
+            //        atomPosAll[p+1] = ny - (((ny - atomPosAll[p+1]) / vesselHeightOld) * vesselHeight);
+            //        if (firstp) {
+            //            cout << "Move Particle: (" << yOld << ", " << atomPosAll[p+2] << ") -> (" << atomPosAll[p+1] << ", " << atomPosAll[p+2] << "). vessel height  " << vesselHeightOld << " -> " << vesselHeight << endl;
+             //           firstp = false;
+             //       }
+             //   }
+            //}
+
+            //lammps_scatter(wrapper->lmp, atomPosName, 1, 3, atomPosAll);
+
+            oldStenosisAmp = stenosisAmp;
+            steeringUpdate = false;
+
+            //if (iT % iSave == iSave - 1) {
+            //    steeringUpdate = false;
+            //    oldStenosisAmp = stenosisAmp;
+            //}
         }
         ////// Lattice Boltzmann iteration step.
 
@@ -734,14 +832,14 @@ int main(int argc, char* argv[]) {
         // }
         // if the modifyDynamicBoundaryFromDataProcessor is used the above is the "proper" way of doing it 12/21
         
-        lattice.collideAndStream();
+        //lattice.collideAndStream();
         ////// Interpolate and update solid position
-        interpolateVelocity3D(lattice,*wrapper);
+        //interpolateVelocity3D(lattice,*wrapper);
         //-----force FSI ibm coupling-------------//
         //forceCoupling3D(lattice,wrapper);
         //lattice.collideAndStream();
         //writeVTK(lattice, domainBox, iT);
-	
+        */	
     }
     //wrapper->execCommand("dump 2 cells xyz 1 dump2.rbc.xyz");
     timeduration = global::timer("mainloop").stop();

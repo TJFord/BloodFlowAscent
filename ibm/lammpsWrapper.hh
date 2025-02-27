@@ -34,13 +34,12 @@ LammpsWrapper::LammpsWrapper(char **argv, MPI_Comm communicator)
   //argv_lmp[0] = argv[0];
   //--------works for none output-----------//
   int argc_lmp = 5;
-  char **argv_lmp = 0;
-  argv_lmp = new char*[5];
+  char **argv_lmp = new char*[5];
   argv_lmp[0] = argv[0];
-  argv_lmp[1]="-screen";
-  argv_lmp[2]="none";
-  argv_lmp[3]="-log";
-  argv_lmp[4]="none";
+  argv_lmp[1]=const_cast<char*>("-screen");
+  argv_lmp[2]=const_cast<char*>("none");
+  argv_lmp[3]=const_cast<char*>("-log");
+  argv_lmp[4]=const_cast<char*>("none");
 
   lmp = new LAMMPS_NS::LAMMPS(argc_lmp,argv_lmp,communicator);
 
