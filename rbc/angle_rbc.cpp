@@ -24,7 +24,6 @@
 #include "memory.h"
 #include "error.h"
 #include "fix_deposit.h"
-#include "fix_deposit.cpp"
 #include "update.h"//debug only
 #include <vector>
 #include <set>
@@ -737,7 +736,7 @@ void AngleRbc::read_restart(FILE *fp)
     fread(&A0t[1],sizeof(double),atom->nangletypes,fp);
     fread(&kv[1],sizeof(double),atom->nangletypes,fp);
     fread(&V0t[1],sizeof(double),atom->nangletypes,fp);
-    fread(&kv[1],sizeof(double),atom->nangletypes,fp);
+    fread(&kd[1],sizeof(double),atom->nangletypes,fp);
     fread(&A0[1],sizeof(double),atom->nangletypes,fp);
   }
   MPI_Bcast(&Cq[1],atom->nangletypes,MPI_DOUBLE,0,world);
